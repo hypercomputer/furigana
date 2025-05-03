@@ -17,7 +17,7 @@ class Demo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const sentence = '大人になっても勉強を続けたい。';
+    const sentence = '今日、大人になった箱入り娘の美緒は、寿司や煙草を買いに七夕祭りへ行き、道端で外国産の盆栽を眺めながら、食べ物と飲み物を堪能し、働き者の友人に手作り照り焼きの作り方を教え、最後に古びた辞書で難しい読み方を調べた。';
 
     return MaterialApp(
       home: Scaffold(
