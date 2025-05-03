@@ -1,39 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:furigana/furigana.dart';
+import 'package:furigana/src/ruby_text_builder.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final annotator = FuriganaAnnotator(); // bundled asset
+  final annotator = FuriganaAnnotator(); // auto path
   await annotator.init();
 
-  runApp(DemoApp(annotator));
+  runApp(Demo(annotator));
 }
 
-class DemoApp extends StatelessWidget {
-  const DemoApp(this.annotator, {super.key});
-
+class Demo extends StatelessWidget {
+  const Demo(this.annotator, {super.key});
   final FuriganaAnnotator annotator;
 
   @override
   Widget build(BuildContext context) {
+    const sentence = '大人になっても勉強を続けたい。';
+
     return MaterialApp(
-      title: 'Furigana Demo',
       home: Scaffold(
         appBar: AppBar(title: const Text('Furigana Demo')),
-        body: FutureBuilder<List<RubySegment>>(
-          future: annotator.annotate('大人になっても勉強を続けたい。'),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: RubyText(snapshot.data!),
-              ),
-            );
-          },
+        body: Center(
+          child: FutureBuilder<Widget>(
+            future: buildRubyText(annotator, sentence,
+                style: const TextStyle(fontSize: 26),
+                rubyStyle: const TextStyle(fontSize: 12)),
+            builder: (c, snap) =>
+                snap.hasData ? snap.data! : const CircularProgressIndicator(),
+          ),
         ),
       ),
     );

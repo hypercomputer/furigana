@@ -49,6 +49,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.8"
+  equatable:
+    dependency: transitive
+    description:
+      name: equatable
+      sha256: "567c64b3cb4cf82397aac55f4f0cbd3ca20d77c6c03bedbc4ceaddc08904aef7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.7"
   fake_async:
     dependency: transitive
     description:
@@ -70,6 +78,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_hooks:
+    dependency: transitive
+    description:
+      name: flutter_hooks
+      sha256: "6a126f703b89499818d73305e4ce1e3de33b4ae1c5512e3b8eab4b986f46774c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.18.6"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -226,6 +242,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
+  ruby_text:
+    dependency: transitive
+    description:
+      name: ruby_text
+      sha256: c9fe49dfe703c240f2ef8274d75c33654ec893685fa7180fd0dcdaf32b850511
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.3"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -279,6 +303,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.3"
+  tuple:
+    dependency: transitive
+    description:
+      name: tuple
+      sha256: a97ce2013f240b2f3807bcbaf218765b6f301c3eff91092bcfa23a039e7dd151
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.2"
   vector_math:
     dependency: transitive
     description:
