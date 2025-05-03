@@ -3,7 +3,7 @@ import 'package:characters/characters.dart';
 
 class RubyToken {
   final String text;
-  final String? ruby;
+  final String? ruby; // null = no furigana
   const RubyToken(this.text, this.ruby);
 }
 
@@ -14,8 +14,9 @@ class FuriganaAnnotator {
   final String _dic;
   late final Mecab _mecab;
   bool _ready = false;
+  static final _cache = <String, List<String>>{};
 
-  /* -------------- public -------------- */
+  /* ─────────── init ─────────── */
 
   Future<void> init() async {
     _mecab = Mecab();
@@ -23,32 +24,34 @@ class FuriganaAnnotator {
     _ready = true;
   }
 
+  /* ─────────── public API ─────────── */
+
   Future<List<RubyToken>> tokenize(String sentence) async {
-    if (!_ready) throw StateError('call init() first');
+    if (!_ready) throw StateError('Call init() first');
 
     final mecabToks = _mecab.parse(sentence);
     final out = <RubyToken>[];
 
-    for (final tok in mecabToks) {
-      if (tok.surface == 'EOS') continue;
+    for (final t in mecabToks) {
+      if (t.surface == 'EOS') continue;
 
-      final surf = tok.surface;
-      final read = _kata2hira(
-          tok.features.length > 7 ? tok.features[7] : '*');
+      final surf = t.surface;
+      final rawRead = t.features.length > 7 ? t.features[7] : '*';
+      final read = _kata2hira(rawRead);
 
       if (!_hasKanji(surf) || read == '*' || read == surf) {
-        out.add(RubyToken(surf, null));
+        out.add(RubyToken(surf, null)); // kana / punctuation
         continue;
       }
-      out.addAll(_splitAndAlign(surf, read));
+      out.addAll(_processWord(surf, read));
     }
     return out;
   }
 
-  /* -------------- splitting & alignment -------------- */
+  /* ─────────── word → ruby tokens ─────────── */
 
-  List<RubyToken> _splitAndAlign(String surface, String reading) {
-    // strip identical kana prefix/suffix (= okurigana outside)
+  List<RubyToken> _processWord(String surface, String reading) {
+    // 1. strip identical kana prefix/suffix (simple okurigana)
     int pre = 0;
     while (pre < surface.length &&
         pre < reading.length &&
@@ -68,71 +71,90 @@ class FuriganaAnnotator {
     final out = <RubyToken>[];
     if (pre > 0) out.add(RubyToken(surface.substring(0, pre), null));
 
-    final coreSurf = surface.substring(pre, surface.length - suf);
-    final coreRead = reading.substring(pre, reading.length - suf);
-    if (coreSurf.isNotEmpty) out.addAll(_alignCore(coreSurf, coreRead));
+    final coreS = surface.substring(pre, surface.length - suf);
+    final coreR = reading.substring(pre, reading.length - suf);
 
-    if (suf > 0) {
-      out.add(RubyToken(surface.substring(surface.length - suf), null));
+    if (coreS.isNotEmpty) {
+      final aligned = _alignCore(coreS, coreR);
+      out.addAll(aligned ?? [RubyToken(coreS, coreR)]); // fallback → jukujikun
     }
+
+    if (suf > 0) out.add(RubyToken(surface.substring(surface.length - suf), null));
     return out;
   }
 
-  List<RubyToken> _alignCore(String kanjiSeq, String reading) {
-    var rIdx = 0;
-    final toks = <RubyToken>[];
+  /* ─────────── DP alignment ─────────── */
 
-    for (final char in kanjiSeq.characters) {
-      if (_isKana(char.codeUnitAt(0))) {
-        toks.add(RubyToken(char, null));
-        rIdx += char.length;
-        continue;
-      }
+    /* ───────── align one word: exact per‑kanji ruby ───────── */
 
-      final candList = _charReadings(char);
-      String slice = '';
+  List<RubyToken>? _alignCore(String kanjiSeq, String reading) {
+    final chars = kanjiSeq.characters.toList();
+    final int n = chars.length;
+    final List<List<String>> cand = [
+      for (final ch in chars)
+        _isKana(ch.codeUnitAt(0))
+            ? [ch] // kana must match itself
+            : [
+                ..._charReadings(ch), // dictionary list
+                '' // we’ll inject single‑kana fallback later
+              ]
+    ];
 
-      for (final c in candList) {
-        if (reading.startsWith(c, rIdx)) {
-          slice = c;
-          break;
+    /// DFS with backtracking
+    List<RubyToken>? dfs(int charIdx, int readIdx) {
+      if (charIdx == n && readIdx == reading.length) return [];
+
+      if (charIdx >= n || readIdx >= reading.length) return null;
+
+      final ch = chars[charIdx];
+      final list = cand[charIdx];
+
+      // iterate through every candidate reading for this character
+      for (var r in list) {
+        // for kanji we may need a single‑kana fallback yet unknown; add it lazily
+        if (r.isEmpty) r = reading[readIdx];
+
+        if (!reading.startsWith(r, readIdx)) continue;
+
+        final next = dfs(charIdx + 1, readIdx + r.length);
+        if (next != null) {
+          final ruby = _isKana(ch.codeUnitAt(0)) ? null : r;
+          return [RubyToken(ch, ruby), ...next];
         }
       }
-      // fallback: at least one kana
-      if (slice.isEmpty) slice = reading[rIdx];
-      toks.add(RubyToken(char, slice));
-      rIdx += slice.length;
+      return null;
     }
-    return toks;
+
+    return dfs(0, 0);
   }
 
-  /* -------------- per‑kanji reading via MeCab -------------- */
-
-  static final Map<String, List<String>> _cache = {};
+  /* ─────────── per‑kanji readings via MeCab + cache ─────────── */
 
   List<String> _charReadings(String kanji) {
     if (_cache.containsKey(kanji)) return _cache[kanji]!;
 
     final parsed = _mecab.parse(kanji);
-    final list = <String>[];
+    final list = <String>{};
 
     for (final t in parsed) {
       if (t.surface == 'EOS') continue;
-      final r = t.features.length > 7 ? t.features[7] : '*';
-      final hira = _kata2hira(r);
+      final raw = t.features.length > 7 ? t.features[7] : '*';
+      final hira = _kata2hira(raw);
       if (hira != '*' && hira != kanji) list.add(hira);
     }
-    _cache[kanji] = list;
-    return list;
+    // sort by length (longest first) so DP chooses longer kana when possible
+    final result = list.toList()..sort((a, b) => b.length - a.length);
+    _cache[kanji] = result;
+    return result;
   }
 
-  /* -------------- utilities -------------- */
-
-  bool _hasKanji(String s) =>
-      s.runes.any((r) => r >= 0x4E00 && r <= 0x9FFF);
+  /* ─────────── util helpers ─────────── */
 
   bool _isKana(int r) =>
       (r >= 0x3040 && r <= 0x309F) || (r >= 0x30A0 && r <= 0x30FF);
+
+  bool _hasKanji(String s) =>
+      s.runes.any((r) => r >= 0x4E00 && r <= 0x9FFF);
 
   String _kata2hira(String kata) => kata.replaceAllMapped(
         RegExp('[ァ-ヶ]'),
