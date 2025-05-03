@@ -1,129 +1,96 @@
-import 'package:collection/collection.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:mecab_dart/mecab_dart.dart';
 
-/// One base string + its ruby reading (or `null` if no ruby needed).
 class RubySegment {
   final String surface;
-  final String? reading; // null ⇒ show surface only
-
+  final String? reading;
   const RubySegment(this.surface, [this.reading]);
-
   bool get needsRuby => reading != null && reading != surface;
 }
 
-/// The heavy‑lifter: runs MeCab and aligns kana readings to kanji.
 class FuriganaAnnotator {
-  FuriganaAnnotator({required this.dictionaryDir});
+  /// If the caller gives no path, fall back to the package asset.
+  FuriganaAnnotator({String? dictionaryDir})
+      : dictionaryDir =
+            dictionaryDir ?? 'packages/furigana/assets/ipadic';
 
   final String dictionaryDir;
   late final Mecab _mecab;
   bool _ready = false;
 
-  /// Initialise MeCab (call **once**, e.g. in `main()`).
   Future<void> init() async {
     _mecab = Mecab();
-    await _mecab.init(dictionaryDir, true /* want features */);
+    await _mecab.init(dictionaryDir, true);
     _ready = true;
   }
 
-  /// Parse Japanese text → list of [RubySegment]s.
   Future<List<RubySegment>> annotate(String text) async {
     if (!_ready) throw StateError('Call init() first.');
     final tokens = _mecab.parse(text);
-    final List<RubySegment> segments = [];
+    final List<RubySegment> out = [];
 
-    for (final token in tokens) {
-      if (token.surface == 'EOS') continue;
+    for (final t in tokens) {
+      if (t.surface == 'EOS') continue;
 
-      // Mecab feature layout for IPADIC:
-      // 0: POS, 1–3: sub‑POS, 4: conjugation type, 5: form,
-      // 6: lemma (基本形), 7: reading (カナ), 8: pronunciation
-      final readingKatakana =
-          token.features.length > 7 ? token.features[7] : '*';
+      final surface = t.surface;
+      final kana = t.features.length > 7 ? t.features[7] : '*';
+      final reading = _katakanaToHiragana(kana);
 
-      final surface = token.surface;
-      final readingHiragana = _katakanaToHiragana(readingKatakana);
+      final needsRuby = _hasKanji(surface) &&
+          reading != '*' &&
+          reading != surface;
 
-      // Decide whether furigana is required for this token.
-      final needsRuby = _containsKanji(surface) &&
-          readingHiragana != '*' &&
-          readingHiragana != surface;
-
-      if (!needsRuby) {
-        segments.add(RubySegment(surface)); // plain text
-      } else {
-        // Try to split reading so kana already present in the surface
-        // appear in‑line, and furigana is shown only above kanji.
-        segments.addAll(_align(surface, readingHiragana));
-      }
+      out.addAll(
+        needsRuby ? _align(surface, reading) : [RubySegment(surface)],
+      );
     }
-    return segments;
+    return out;
   }
 
-  /* ------------------------------------------------------------------ */
-  // --------------- private helpers ---------------------------------- */
+  /* ---------- helpers ---------- */
 
-  bool _containsKanji(String s) =>
-      s.runes.any((r) => (r >= 0x4E00 && r <= 0x9FFF));
+  bool _hasKanji(String s) =>
+      s.runes.any((r) => r >= 0x4E00 && r <= 0x9FFF);
 
-  /// Simple longest‑common‑prefix/suffix heuristic.
-  ///
-  /// For 勉強(べんきょう) → ["勉強", "べんきょう"]
-  /// For 今日(きょう)    → ["今", "きょ"], ["日", "う"]  (not perfect but OK)
-  /// If it fails, fall back to whole‑token ruby.
   List<RubySegment> _align(String surface, String reading) {
-    // If surface contains kana, strip matching prefix/suffix from reading.
-    final kanaPrefix = _commonPrefix(surface, reading);
-    final kanaSuffix = _commonSuffix(surface, reading);
-    final List<RubySegment> segments = [];
+    final prefix = _commonPrefix(surface, reading);
+    final suffix = _commonSuffix(surface, reading);
 
-    var coreSurface = surface;
-    var coreReading = reading;
+    final List<RubySegment> segs = [];
+    var s = surface, r = reading;
 
-    if (kanaPrefix.isNotEmpty) {
-      segments.add(RubySegment(kanaPrefix)); // in‑line prefix
-      coreSurface = coreSurface.substring(kanaPrefix.length);
-      coreReading = coreReading.substring(kanaPrefix.length);
+    if (prefix.isNotEmpty) {
+      segs.add(RubySegment(prefix));
+      s = s.substring(prefix.length);
+      r = r.substring(prefix.length);
     }
-    if (kanaSuffix.isNotEmpty) {
-      coreSurface =
-          coreSurface.substring(0, coreSurface.length - kanaSuffix.length);
-      coreReading =
-          coreReading.substring(0, coreReading.length - kanaSuffix.length);
+    if (suffix.isNotEmpty) {
+      s = s.substring(0, s.length - suffix.length);
+      r = r.substring(0, r.length - suffix.length);
     }
 
-    if (coreSurface.isEmpty) {
-      // Entire token was kana → no ruby needed
-      return [RubySegment(surface)];
-    }
-
-    final List<RubySegment> result = [];
-    if (coreSurface.isNotEmpty) {
-      result.add(RubySegment(coreSurface, coreReading));
-    }
-    if (kanaSuffix.isNotEmpty) result.add(RubySegment(kanaSuffix));
-    return result;
-  }
-
-  String _commonPrefix(String a, String b) {
-    final minLen = a.length < b.length ? a.length : b.length;
-    for (var i = 0; i < minLen; i++) {
-      if (a[i] != b[i]) return a.substring(0, i);
-    }
-    return a.substring(0, minLen);
-  }
-
-  String _commonSuffix(String a, String b) {
-    final minLen = a.length < b.length ? a.length : b.length;
-    for (var i = 1; i <= minLen; i++) {
-      if (a[a.length - i] != b[b.length - i]) return a.substring(a.length - i + 1);
-    }
-    return a.substring(a.length - minLen);
+    if (s.isNotEmpty) segs.add(RubySegment(s, r));
+    if (suffix.isNotEmpty) segs.add(RubySegment(suffix));
+    return segs;
   }
 
   String _katakanaToHiragana(String kata) => kata.replaceAllMapped(
         RegExp('[ァ-ヶ]'),
         (m) => String.fromCharCode(m[0]!.codeUnitAt(0) - 0x60),
       );
+
+  String _commonPrefix(String a, String b) {
+    for (var i = 0; i < a.length && i < b.length; i++) {
+      if (a[i] != b[i]) return a.substring(0, i);
+    }
+    return a.length < b.length ? a : b;
+  }
+
+  String _commonSuffix(String a, String b) {
+    for (var i = 1;
+        i <= a.length && i <= b.length && a[a.length - i] == b[b.length - i];
+        i++) {
+      if (i == a.length || i == b.length) return a.substring(a.length - i);
+    }
+    return '';
+  }
 }

@@ -1,15 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:furigana/furigana.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final data = await rootBundle.load("packages/furigana/assets/ipadic/char.bin");
-  print("char.bin loaded: ${data.lengthInBytes} bytes");
-
-  final annotator =
-      FuriganaAnnotator(dictionaryDir: "packages/furigana/assets/ipadic"); // bundled asset
+  final annotator = FuriganaAnnotator(); // bundled asset
   await annotator.init();
 
   runApp(DemoApp(annotator));

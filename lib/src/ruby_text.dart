@@ -1,46 +1,49 @@
 import 'package:flutter/widgets.dart';
 import 'annotator.dart';
 
-/// Renders a list of [RubySegment]s in one `RichText`.
 class RubyText extends StatelessWidget {
   const RubyText(
     this.segments, {
     super.key,
     this.style,
     this.rubyStyle,
-    this.spacing = 2,
+    this.gap = 2,
   });
 
   final List<RubySegment> segments;
   final TextStyle? style;
   final TextStyle? rubyStyle;
-  final double spacing; // vertical gap in logical px
+  final double gap;
 
   @override
   Widget build(BuildContext context) {
-    final baseStyle = style ?? DefaultTextStyle.of(context).style;
+    final base = style ?? DefaultTextStyle.of(context).style;
     final ruby =
-        rubyStyle ?? baseStyle.copyWith(fontSize: baseStyle.fontSize! * 0.5);
+        rubyStyle ?? base.copyWith(fontSize: base.fontSize! * 0.55);
+
+    final children = segments.map((seg) {
+      // Reusable widget for *every* token so heights match.
+      return Container(
+        margin: EdgeInsets.symmetric(horizontal: 1),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (seg.needsRuby) Text(seg.reading!, style: ruby),
+            if (seg.needsRuby) SizedBox(height: gap),
+            Text(seg.surface, style: base),
+          ],
+        ),
+      );
+    }).toList();
 
     return RichText(
       text: TextSpan(
-        children: segments.map<InlineSpan>((seg) {
-          if (!seg.needsRuby) {
-            return TextSpan(text: seg.surface, style: baseStyle);
-          }
-          return WidgetSpan(
-            alignment: PlaceholderAlignment.baseline,
-            baseline: TextBaseline.ideographic,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(seg.reading!, style: ruby),
-                SizedBox(height: spacing),
-                Text(seg.surface, style: baseStyle),
-              ],
-            ),
-          );
-        }).toList(),
+        children: children
+            .map((w) => WidgetSpan(
+                  alignment: PlaceholderAlignment.top,
+                  child: w,
+                ))
+            .toList(),
       ),
     );
   }
