@@ -85,44 +85,50 @@ class FuriganaAnnotator {
 
   /* ─────────── DP alignment ─────────── */
 
-    /* ───────── align one word: exact per‑kanji ruby ───────── */
+  /* ───────── align one word: exact per‑kanji ruby ───────── */
 
   List<RubyToken>? _alignCore(String kanjiSeq, String reading) {
     final chars = kanjiSeq.characters.toList();
-    final int n = chars.length;
-    final List<List<String>> cand = [
+    final nKanji = chars.length;
+
+    // pre‑fetch dictionary readings for each kanji
+    final dict = [
       for (final ch in chars)
-        _isKana(ch.codeUnitAt(0))
-            ? [ch] // kana must match itself
-            : [
-                ..._charReadings(ch), // dictionary list
-                '' // we’ll inject single‑kana fallback later
-              ]
+        _isKana(ch.codeUnitAt(0)) ? <String>[ch] : _charReadings(ch)
     ];
 
-    /// DFS with backtracking
-    List<RubyToken>? dfs(int charIdx, int readIdx) {
-      if (charIdx == n && readIdx == reading.length) return [];
+    List<RubyToken>? dfs(int idxChar, int idxRead) {
+      if (idxChar == nKanji && idxRead == reading.length) return [];
 
-      if (charIdx >= n || readIdx >= reading.length) return null;
+      if (idxChar >= nKanji || idxRead >= reading.length) return null;
 
-      final ch = chars[charIdx];
-      final list = cand[charIdx];
+      final ch = chars[idxChar];
 
-      // iterate through every candidate reading for this character
-      for (var r in list) {
-        // for kanji we may need a single‑kana fallback yet unknown; add it lazily
-        if (r.isEmpty) r = reading[readIdx];
-
-        if (!reading.startsWith(r, readIdx)) continue;
-
-        final next = dfs(charIdx + 1, readIdx + r.length);
-        if (next != null) {
-          final ruby = _isKana(ch.codeUnitAt(0)) ? null : r;
-          return [RubyToken(ch, ruby), ...next];
-        }
+      /* ---------- literal kana in surface ---------- */
+      if (_isKana(ch.codeUnitAt(0))) {
+        if (!reading.startsWith(ch, idxRead)) return null;
+        final tail = dfs(idxChar + 1, idxRead + ch.length);
+        return tail == null ? null : [RubyToken(ch, null), ...tail];
       }
-      return null;
+
+      /* ---------- kanji: try dict readings ---------- */
+      for (final r in dict[idxChar]) {
+        if (!reading.startsWith(r, idxRead)) continue;
+        final tail = dfs(idxChar + 1, idxRead + r.length);
+        if (tail != null) return [RubyToken(ch, r), ...tail];
+      }
+
+      /* ---------- variable‑length fallback ---------- */
+      final kanjiLeft = nKanji - idxChar - 1;
+      final maxLen = reading.length - idxRead - kanjiLeft;
+      // try longest first so we favour kun‑yomi like むすめ over む
+      for (int len = maxLen; len >= 1; len--) {
+        final slice = reading.substring(idxRead, idxRead + len);
+        final tail = dfs(idxChar + 1, idxRead + len);
+        if (tail != null) return [RubyToken(ch, slice), ...tail];
+      }
+
+      return null; // no path
     }
 
     return dfs(0, 0);
