@@ -1,5 +1,4 @@
-/// A Calculator.
-class Calculator {
-  /// Returns [value] plus 1.
-  int addOne(int value) => value + 1;
-}
+library furigana;
+
+export 'src/annotator.dart' show FuriganaAnnotator, RubySegment;
+export 'src/ruby_text.dart' show RubyText;
