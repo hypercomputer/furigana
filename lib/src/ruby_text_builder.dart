@@ -4,15 +4,17 @@ import 'annotator.dart';
 
 /// Build a ready‑to‑display RubyText widget from a sentence.
 Future<Widget> buildRubyText(
-  FuriganaAnnotator annotator,
   String sentence, {
   TextStyle? style,
   TextStyle? rubyStyle,
 }) async {
+  final annotator = FuriganaAnnotator();
+  await annotator.init();
+
   final tokens = await annotator.tokenize(sentence);
 
   final data = tokens
-      .map((t) => RubyTextData(t.text, ruby: t.ruby))   // ← use .text
+      .map((t) => RubyTextData(t.text, ruby: t.ruby))
       .toList(growable: false);
 
   return RubyText(
