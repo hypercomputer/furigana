@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:furigana/src/annotator.dart';
+import 'package:furigana_text/src/annotator.dart';
 import 'package:ruby_text/ruby_text.dart';
 
 class FuriganaText extends StatefulWidget {

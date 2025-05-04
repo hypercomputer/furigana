@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:furigana/furigana.dart';
+import 'package:furigana_text/furigana_text.dart';
 
 void main() {
   runApp( Demo());

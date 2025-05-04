@@ -1,4 +1,4 @@
-name: furigana
+name: furigana_text
 description: Automatic furigana annotation and rendering for Japanese text.
 version: 0.1.0
 environment:

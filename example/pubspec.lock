@@ -99,7 +99,7 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  furigana:
+  furigana_text:
     dependency: "direct main"
     description:
       path: ".."
